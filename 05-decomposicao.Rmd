@@ -1,0 +1,196 @@
+# Decomposição de Séries Temporais {#decomposicao}
+
+```{r ch05-01, message = FALSE}
+# install.packages("seasonal")
+
+library(BETS)
+library(forecast)
+library(lubridate)
+library(tidyverse)
+library(magrittr)
+library(seasonal)
+```
+
+
+Séries Temporais podem exibir uma grande variedade de padrões que podem ser modelados separadamentes, o que pode ajudar o analista a entender melhor os dados e até mesmo a melhorar as previsões.
+
+Já vimos no [capítulo introdutório](#elementos) que uma série temporal possui três tipos de padrão: tendência, sazonalidade e ciclo. Se assumirmos que a série segue um modelo aditivo, então, matematicamente, ela pode ser descrita pela equação $y_t = S_t + T_t + E_t$, onde $E_t$ é o componente do erro no período $t$. Se a série for melhor descrita por um modelo multiplicativo, então a equação vira $y_t = S_t \times T_t \times E_t$.
+
+Para se decidir se uma série segue um modelo aditivo ou multiplicativo (alguns algoritmos já calculam isso internamente), observe se a magnitude dos períodos sazonais ou a variância da tendência cresce conforme o nível (valores absolutos) da série cresce.
+
+Por exemplo:
+
+```{r}
+# simulando uma série de modelo aditivo
+set.seed(123)
+x <- 1:500 + c(rnorm(250, 50, 25), rnorm(250, 50, 25))
+plot(x, type = "l")
+
+# modelo multiplicativo
+a <- rep(1, 500)
+b <- 1:500/8
+
+set.seed(123)
+x2 <- pmap(list(a, b), rnorm, mean = 0) %>% as.numeric()
+
+x <- 1:500 + x2
+plot(x, type = "l")
+
+```
+
+No segundo gráfico, vemos que, para valores maiores da série temporal, a variância dos dados é maior.
+
+## Médias móveis
+
+Embora seja meio datada e tenha dado espaço para técnicas mais avançadas de decomposição, a média móvel é a base de muitos métodos de análises de séries temporais e uma importante etapa para estimar o componente de tendência de uma série.
+
+Vamos voltar a analisar a série temporal baixada por meio do `BETS`:
+
+```{r}
+energia <- readRDS("data/ts_energia.Rda")
+# plotando a serie contra uma media movel de 3 meses
+plot(energia)
+ma(energia, 3) %>% lines(col = "red", lwd = 1)
+# a media movel de 3 meses nao foi suficiente. vamos aumentar o periodo
+ma(energia, 12) %>% lines(col = "blue", lwd = 2)
+ma(energia, 24) %>% lines(col = "green", lwd = 3)
+
+```
+
+A curva que apresenta menos flutuações sazonais é verde, referente à média móvel de 24 períodos. Mesmo assim, pode-se dizer que essa decomposição não foi satisfatória, devido a curva apresentar perturbações mesmo usando um período longo (24 meses) para sua estimação.
+
+
+## Decomposição clássica
+
+A técnica de decomposição clássica é um procedimento relativamente simples, mas depende da definição do usuário se a série temporal analisada segue um modelo aditivo ou multiplicativo.
+
+1. Calcule a média móvel da série temporal:
+
+```{r}
+# convertendo para dataframe
+df_energia <- data.frame(
+  data = seq.Date(from = as.Date("1979-01-01"), by = "month",
+                  length.out = length(energia)),
+  st = energia
+)
+# adicionando a media movel
+df_energia$media_movel <- ma(energia, 24)
+```
+
+2. Remova o componente de tendência da série. Caso seja o modelo seja aditivo, subtraia a série pela tendência. Caso seja multiplicativo, divida.
+
+```{r}
+df_energia$serie_sem_tend_adt <- energia - df_energia$media_movel
+df_energia$serie_sem_tend_mult <- energia / df_energia$media_movel
+```
+
+3. Calcule a média da série sem tendência para cada período sazonal.
+
+```{r}
+# no caso dessa serie de exemplo, que possui frequencia igual a 12, 
+# um periodo sazonal corresponde aos 12 meses do ano
+df_energia %<>% 
+  group_by(mes = month(data)) %>% 
+  mutate(saz_adi = mean(serie_sem_tend_adt, na.rm = TRUE),
+         saz_mult = mean(serie_sem_tend_mult, na.rm = TRUE)) %>% 
+  ungroup()
+
+# é necessário verificar se os indices sazonais aditivos somam 0 e se os multiplicativos somam 12
+df_energia$saz_adi %>% unique %>% sum
+df_energia$saz_mult %>% unique %>% sum
+# os indices sazonais nao somam zero, portanto precisamos rescalar o vetor:
+df_energia %<>% 
+  mutate(saz_adi = scale(saz_adi)) %>% 
+  ungroup()
+# checando novamente
+df_energia$saz_adi %>% unique %>% sum
+
+```
+
+4. Calcular o componente de erro (restante)
+
+```{r}
+
+# se for aditivo, e = y_t - T_t - S_t
+df_energia %<>% mutate(
+  erro_adi = serie_sem_tend_adt - saz_adi,
+  erro_mult = serie_sem_tend_mult / saz_mult
+)
+
+
+```
+
+
+Vamos comparar os dois componentes de erro obtidos:
+
+```{r}
+
+layout(matrix(c(1,1,2,3), 2, 2, byrow = TRUE))
+plot(df_energia$erro_adi, type = "l")
+lines(df_energia$erro_mult, type = "l", col  = "red")
+
+hist(df_energia$erro_adi, main = "Distribuição do erro aditivo")
+hist(df_energia$erro_mult, main = "Distribuição do erro multiplicativo")
+
+
+```
+
+Outro gráfico que pode ser usado para comparar o erro aleatório é o de autocorrelação:
+
+```{r}
+
+par(mfrow = c(1,2))
+df_energia %$% acf(erro_adi, na.action = na.omit)
+df_energia %$% acf(erro_mult, na.action = na.omit)
+# verificando qual dos dois possui a menor autocorrelacao total
+df_energia %$%
+  acf(erro_adi, na.action = na.omit, plot = FALSE)$acf^2 %>% 
+  sum
+
+df_energia %$%
+  acf(erro_mult, na.action = na.omit, plot = FALSE)$acf^2 %>% 
+  sum
+
+
+```
+
+Pela análise da autocorrelação, a decomposição multiplicativa parece ser mais apropriada.
+
+## Outros tipos de decomposição
+
+### Pacote `seasonal`
+
+O pacote `seasonal`, disponível no [CRAN](https://cran.r-project.org/web/packages/seasonal/index.html), implementa uma interface ao algoritmo e software **X-13-ARIMA-SEATS**, desenvolvido pelo [US Census Bureau](https://www.census.gov/srd/www/x13as/). Possui recursos como seleção automática do modelo ARIMA, detecção de outliers e suporte para feriados definidos pelo usuário, como Carnaval e Páscoa.
+
+Um rápido uso do pacote `seasonal` é mostrado abaixo:
+
+```{r}
+m <- seas(energia)
+# resumo sobre o modelo
+summary(m)
+# plotando o modelo
+plot(m)
+# retornando as componentes individuais da serie:
+final(m) %>% head(20) # serie sem tendencia
+trend(m) %>% head(20) # tendencia da serie
+irregular(m) %>% head(20) # erro aleatorio
+
+```
+
+### Decomposição STL
+
+O método STL funciona apenas para decomposições aditivas. Aplicá-la no R é muito fácil, usando a função `stl`:
+
+```{r stl}
+energia %>% 
+  stl(s.window = "periodic") %>%  #raramente este argumento sera diferente
+  plot
+
+
+
+```
+
+
+
+![](http://i.imgur.com/lBCBhhP.jpg)
+

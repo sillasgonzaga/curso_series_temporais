@@ -1,0 +1,50 @@
+--- 
+title: "Curso de Séries Temporais - IBPAD"
+author: "© Sillas Teixeira Gonzaga"
+site: bookdown::bookdown_site
+date: "`r Sys.Date()`"
+output:
+  bookdown::gitbook:
+    includes:
+      css: style.css
+    config:
+      sharing: null
+documentclass: book
+bibliography: [book.bib, packages.bib]
+biblio-style: apalike
+link-citations: yes
+description: "descrição YAML"
+---
+
+# Prefácio {-}
+
+
+Este curso é oferecido pelo Instituto Brasileiro de Pesquisa e Análise de Dados, o [IBPAD](http://ibpad.com.br/),  um centro independente de pesquisa e formação de analistas e pesquisadores nas áreas de Pesquisa e Opinião Pública, Política e Relações Governamentais e Comunicação Digital.
+
+![IBPAD](http://i.imgur.com/nPkbC2g.png)
+
+## Instrutor {-}
+
+Formado em Engenharia de Produção, possui grande interesse em Ciência de Dados. Usa o R há pelo menos três anos não só profissionalmente, mas também em diversos projetos pessoais, como o blog [Paixão por Dados](http://sillasgonzaga.github.io/). É autor do pacote de previsões temporais chamado [`mafs`](https://github.com/sillasgonzaga/mafs).
+
+## Instalação de pacotes {-}
+
+Para este curso, serão usados alguns pacotes do R. Para poder acompanhar os códigos disponíveis no material, rode o seguinte comando no R:
+
+```{r, eval=FALSE}
+pacotes <- c("forecast", "magrittr", "tidyverse", "GGally", "broom", "ggalt",
+             "ggExtra", "BETS", "lubridate", "seasonal", "mafs", "dygraphs",
+             "gtrendsR")
+
+install.packages(pacotes)
+
+```
+
+
+![](http://i.imgur.com/lBCBhhP.jpg)
+
+
+Link para o Google Drive com scripts de exercício: https://gist.github.com/sillasgonzaga/0ddc256e991407b05d7be4d3405fe55e
+
+
+

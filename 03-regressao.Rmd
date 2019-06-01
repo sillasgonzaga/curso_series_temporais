@@ -1,0 +1,279 @@
+# Regressão {#regressao}
+
+
+```{r pacotes usados neste capitulo, message=FALSE}
+# install.packages(c("GGally", "ggalt", "ggExtra"))
+
+library(magrittr)
+library(tidyverse)
+library(GGally)
+library(forecast)
+library(broom)
+library(ggalt)
+library(ggExtra)
+
+```
+
+
+
+A técnica chamada de **regressão** é usada para predizer o valor de uma variável Y (chamada de variável resposta ou dependente) baseado em uma ou mais variáveis X (variável explanatória ou independente). Se a regressão utiliza apenas uma variável explanatória, é chamada de regressão simples. O objetivo da regressão é representar a relação entre as variáveis resposta e explanatória por meio de uma equação matemática linear do tipo:
+
+$Y =  \beta_1 + \beta_2X + \epsilon $
+
+onde $\beta_1$ é a interceptação da reta com o eixo vertical e $\beta_2$ o coeficiente de inclinação associado à variável explanatória. Tais elementos são chamados coeficientes da regressão. O termo $\epsilon$ representa o termo do erro, que é a parte de Y que a regressão é incapaz de explicar (por existir outras variáveis que explicariam Y mas que não foram incorporadas ao modelo).
+
+Neste capítulo, usaremos como exemplo o dataset x15 extraído [deste site](http://people.sc.fsu.edu/~jburkardt/datasets/regression/), que traz dados que tentam explicar o consumo de petróleo baseado em outros inputs. Os dados não vêm já formatados, o que vai acabar servindo para mostrar um exemplo de limpeza de dados em R.
+
+```{r regressao-ch02}
+
+url <- "http://people.sc.fsu.edu/~jburkardt/datasets/regression/x15.txt"
+readLines(url)
+# Os dados de verdade estão presentes entre as linhas 42 a 89. 
+# Os nomes das colunas estão presentes entre as linhas 36 a 41
+dados <- readLines(url)[42:89]
+# como salvamos o dataset como se fosse um string em uma variavel...
+# (ao inves de importar de um arquivo de texto), precisamos indicar que a variavel...
+# dados corresponde a um arquivo de texto que contem um dataset
+con <- textConnection(dados)
+df <- read.table(con, header = FALSE)
+close(con)
+# adicionando o nome das colunas
+names(df) <- c("linha", "imposto", "renda_media", "km_asfaltado", "n_carteiras",
+               "consumo")
+# retirar a primeira coluna já que nao serve para nada
+df <- df[,-1]
+
+head(df)
+
+```
+
+O objetivo aqui é descobrir qual das 4 variáveis explica a variável `consumo`.
+
+## Correlação
+
+Correlação é um indicador estatístico que mede o nível de dependência linear entre duas variáveis. Está definida no intervalo [-1, +1]. Se a correlação é negativa, indica que as variáveis são inversamente proporcinais: quando uma aumenta, a outra diminui. Se é positiva, indica que as variáveis são diretamente proporcionais.
+
+Medir a correlação no R é muito simples:
+
+```{r}
+# Usando a função cor
+cor(df$consumo, df$n_carteiras)
+cor(df$consumo, df$renda_media)
+
+
+```
+Para analisar todas as correlações entre todas as variáveis de uma só vez, podemos tanto calcular uma matriz de correlação como plotar todas as correlações com o auxílio do pacote `GGally`:
+
+```{r}
+# matriz de correlacao:
+cor(df)
+# usando o pacote GGally
+ggpairs(df)
+
+```
+
+Percebe-se pela matriz de correlação (e principalmente pelo gráfico) que só valeria a pena usar como variáveis explanatórias do nosso objeto de estudo o número de carteiras de habilitação e talvez o imposto sobre o consumo de petróleo.
+
+## Análise explatória e gráfica
+
+No gráfico acima, mais precisamente na parte referente ao gráfico de dispersão entre as variáveis consumo e número de carteiras, é notório que existem quatro pontos que se destacam dos demais: três para cima e um para baixo. Como eles estão distantes verticalmente do "bolo" de pontos, o que é um indício de que são outliers em consumo. Tratamento de outliers é um tópico fundamental na construção de modelos.
+
+Primeiramente, vamos analisar a distribuição da variável de consumo por meio de um histograma:
+
+```{r}
+# pelo ggplot2, o grafico fica com intervalos meio feios:
+ggplot(df, aes(x = consumo)) +
+  geom_histogram() +
+  labs(x = "Consumo", y = "Quantidade")
+
+# o pacote forecast traz uma versao melhorada do histograma do ggplot2:
+gghistogram(df$consumo) +
+  labs(x = "Consumo", y = "Quantidade")
+
+
+```
+
+O histograma confirma que os valores acima de 800 peças e abaixo de 400 são anomalias dada a distribuição normal que a variável `consumo` aparenta ter. 
+
+Visto que é possível descrever `consumo` como uma distribuição normal, pode-se assumir que a probabilidade de que um valor esteja fora do intervalo $\mu(consumo) \pm 3 \times \sigma(consumo)$ é de apenas 0,27%. Vamos destacar esses outliers com o auxílio dos pacotes `ggalt` e `ggExtra`, que são extensões do `ggplot2`.
+
+```{r}
+# calcular limites superior e inferior
+lim_sup <- mean(df$consumo) + 2 * sd(df$consumo)
+lim_inf <- mean(df$consumo) - 2 * sd(df$consumo)
+
+# por curiosidade, como ficaria com o pipe:
+lim_sup <- df$consumo %>% {mean(.) + 3 * sd(.)}
+lim_inf <- df$consumo %>% {mean(.) - 3 * sd(.)}
+# criar dataframe sem outliers
+df_sem_out <- df %>% filter(lim_inf < consumo & consumo < lim_sup)
+
+
+p <- ggplot(df, aes(x = n_carteiras, y = consumo)) +
+  geom_point() + 
+  # adicionar curva da regressao
+  geom_smooth(method = "lm") +
+  # plotar circulo que deixe de fora os outliers
+  geom_encircle(data = df_sem_out,
+                aes(x = n_carteiras, y = consumo), color = 'red') + 
+  labs(x = "Número de carteiras de motorista", y = "Consumo de petróleo")
+
+# plotar histogramas nas margens do grafico
+ggMarginal(p, type = "histogram")
+```
+
+Agora o outlier onde `consumo > 800` e `n_carteiras > 0,65` ficou mais visível. Portanto, faz sentido removê-lo da análise.
+
+Como ficam as correlacões sem o outlier?
+
+```{r}
+# comparar as matrizes de correlacao
+cor(df)
+cor(df_sem_out)
+
+```
+
+## Modelagem por regressão simples
+
+No R, é bem simples ajustar um modelo de regressão. Usando a variável `n_carteiras` como explanatória e `consumo` como resposta, um modelo é construído da seguinte maneira:
+
+```{r}
+modelo.simples <- lm(consumo ~ n_carteiras, data = df_sem_out)
+summary(modelo.simples)
+
+
+```
+
+Com o modelo criado, é possível descrever a relação entre `consumo` e `n_carteiras` matematicamente por meio da seguinte equação:  
+
+$consumo = -123.5 + 1217.8 \times n\_carteiras$
+
+Vamos deixar para analisar os diagnósticos da regressão no próximo item:
+
+## Regressão multivariada
+
+Suponha também que você deseja incorporar a variável `imposto` ao modelo. Antes de fazer isso, vamos ver como as duas variáveis explanatórias se relacionam com a resposta em um gráfico tridimensional:
+
+```{r, fig.height=5}
+
+ggplot(df, aes(x = n_carteiras, y = consumo, color = imposto)) +
+  geom_point() +
+  scale_color_continuous(low = "green",  high = "red")
+
+```
+
+Valores altos de impostos aparentam estar associados com valores baixos de consumo.
+
+Para adicionar uma nova variável ao modelo, fazemos:
+
+```{r}
+modelo.mult <- lm(consumo ~ n_carteiras + imposto, data = df_sem_out)
+summary(modelo.mult)
+# Usando o pacote broom para formatar o output dos modelos de regressao
+# concatenando os dois modelos em um dataframe so
+
+# metricas dos regressores
+modelo.simples %>% tidy
+modelo.mult %>% tidy
+
+# metricas do modelo
+rbind(modelo.simples %>% glance,
+     modelo.mult %>% glance)
+
+
+
+```
+
+Agora vamos à análise dos indicadores da regressão:
+
+### Hipótese nula da regressão
+
+A presença de um valor-p indica que existe uma hipótese nula sendo testada. Na regressão linear, a hipótese nula é a de que os coeficientes das variáveis explanatórias são iguais a zero. A hipótese alternativa é a de que os coeficientes não são iguais a zero, ou seja, existe uma relação matemático entre as variáveis do modelo.
+
+### valor-p
+
+Nós podemos considerar um modelo linear estatisticamente significante apenas se os valores-p, tanto dos coeficientes como do modelo, são menores que um nível de significância pré-determinado, que idealmente é 0,05.
+
+### valor-t ou estatística
+
+Um valor grande do valor-t indica que é pouco provável que os coeficientes não sejam iguais a zero puramente por coincidência. Assim, quanto maior o valor-t, melhor.
+
+### R-quadrado e R-quadrado ajustado
+
+R-quadrado é a proporção da variação da variável resposta que é explicada pelo modelo. Quanto maior, melhor o modelo, supostamente.
+
+Se continuarmos adicionando variáveis ao modelo de regressão, o R-quadrado apenas tende a crescer, intuitivamente. Isso acontecerá mesmo que a variável explanatória adicionada não seja significante. Para evitar esse problema que tornaria a comparação entre modelos praticamente inviável, o R-quadrado ajustado "penaliza" o valor do R-quadrado pelo número de variáveis adicionadas. Semelhantemente ao R-quadrado, quanto maior, melhor.
+
+### AIC e BIC
+
+O AIC (Critério de Informação de Akaike) e o BIC (Critério de Informação Bayesiano) são métricas de qualidade de ajuste de um modelo estatístico que podem ser usados para a seleção de modelos. Quanto menor os valores, melhor o modelo.
+
+### Análise dos resíduos
+
+Um indicador visual da qualidade de um modelo é a distribuição dos modelos: um bom modelo apresentará resídos que seguem uma distribuição normal com média 0.
+
+Um modelo de regressão pressupõe que seus resíduos (subtração entre o valor real e o ajustado) seguem uma distribuição normal e não possuem nenhum tipo de relação matemática com os regressores do modelo (ou mesmo com variáveis independentes não usadas no modelo).
+
+Para analisar o primeiro pressuposto do modelo múltiplo, fazemos um histograma dos resíduos:
+```{r}
+modelo.mult$residuals %>% hist
+```
+
+Para analisar o segundo pressuposto, plotamos os resíduos contra todas as variáveis do dataset:
+
+```{r}
+par(mfrow=c(2,2))
+plot(df_sem_out$imposto, residuals(modelo.mult), xlab = "imposto")
+plot(df_sem_out$renda_media, residuals(modelo.mult), xlab = "renda media")
+plot(df_sem_out$km_asfaltado, residuals(modelo.mult), xlab = "km asfaltado")
+plot(df_sem_out$n_carteiras, residuals(modelo.mult), xlab = "n_carteiras")
+
+
+```
+
+Os resíduos do modelo múltiplo aparentam ter alguma relação com a variável `renda_media`, o que indica que ela pode ser incorporada ao modelo.
+
+
+## Regressão como modelo preditivo {#modelo-preditivo}
+
+Um dos objetivos da regressão, além de descrever matematicamente a relação entre duas ou mais variáveis, é prever o valor da variável dependente baseado em novos valores da variável independente. Não é possível afirmar que um modelo apresentará um bom desempenho preditivo analisando apenas as métricas da regressão do tópico anterior. É necessário testar o modelo em dados que ele nunca viu.
+
+A prática comum em Data Science é de separar o conjunto de dados que se tem em mãos em dois conjuntos: o de treino, que será usado para construir o modelo, e o de teste, que será usado como input do modelo para avaliar sua acurácia.
+
+Após obter as previsões, deve-se usar uma ou mais métricas de erro (ver capítulo posterior) para avaliar a precisão do modelo.
+
+```{r}
+
+set.seed(1993)  # escolhendo uma seed para tornar os resultados previsiveis
+indice <- sample(1:nrow(df_sem_out), 0.8*nrow(df_sem_out))  # row indices for training data
+treino <- df_sem_out[indice, ]  # model training data
+teste  <- df_sem_out[-indice, ]   # test data
+
+# construindo os dois modelos, mantendo o teste de fora
+modelo.simples <- lm(consumo ~ n_carteiras, data = treino)
+modelo.mult <- lm(consumo ~ n_carteiras + imposto, data = treino)
+
+# calcular previsao baseado no dataframe de teste
+prev.simples <- predict(modelo.simples, newdata = teste)
+prev.mult <- predict(modelo.mult, teste)
+# uma das metricas é correlação entre previsto e real:
+real = teste$consumo
+
+cor(prev.simples, real)
+cor(prev.mult, real)
+# outra metrica é o MAPE
+mean(abs(prev.simples - real)/real)
+mean(abs(prev.mult - real)/real)
+
+```
+Os dois modelos apresentam resultados semelhantes de erro. Portanto, pelo menos para este teste, não houve um aumento significativo de acurácia no modelo ao incorporar a variável `imposto` como explanatória.
+
+## Referências
+
+* [Pressupostos sobre regressão linear](http://r-statistics.co/Assumptions-of-Linear-Regression.html);  
+* [Datasets](https://archive.ics.uci.edu/ml/datasets.html?area=&att=&format=&numAtt=&numIns=&sort=nameUp&task=reg&type=&view=table) para você praticar regressão linear.
+
+
+![](http://i.imgur.com/lBCBhhP.jpg)
+
+

@@ -1,0 +1,227 @@
+# Revisão - Linguagem R {#linguagemR}
+
+
+## Data frames
+
+
+Data frames são a principal classe de objetos do R. São como tabelas de Excel: estruturas compostas por linhas e colunas.
+
+Data frames são criados geralmente usando funções de importar dados, como `read.csv2()`, mas também podem ser criados explicitamente usando a função `data.frame()`.
+
+Um exemplo de data frame:
+
+```{r exemplo dataframe}
+library(tidyverse)
+
+head(iris)
+str(iris)
+
+```
+
+No R, enfatiza-se muito que, para permitir um manuseio mais fácil dos dados, as variáveis sejam armazenadas em colunas e os valores em células. Isso é um princípio de uma filosofia criada por Hadley Wickham chamada [tidy data](http://vita.had.co.nz/papers/tidy-data.html). 
+
+## tidyverse
+
+![Tidyverse](https://i.redd.it/27ey1rdre84z.jpg)
+
+O tidyverse (também chamado de hadleyverse) é um conjunto de pacotes R que facilita o manuseio de dados. **Atualmente** agrega os seguintes pacotes:
+
+* `ggplot2`, para visualização de dados;  
+* `dplyr`, para manuseio de dados;  
+* `tidyr`, para arrumação de dados;  
+* `readr`, para importaçao de dados;  
+* `purrr`, para programação funcional;  
+* `stringr`, para manuseio de strings;  
+*  etc.
+
+Você pode instalar todos os pacotes do tidyverse usando o comando `install.packages("tidyverse")`. 
+
+## Datas
+
+Para trabalhar com datas e horários (ou períodos), o pacote `lubridate` é indispensável. Ele reúne praticamente todas as funções necessárias com essas variáveis usando códigos rápidos e de sintaxe amigável.
+
+Algumas funções do `lubridate` são especialmente úteis para nós brasileiros, devido ao fato de usarmos o padrão "dd-mm-aaaa" e não o "aaaa-mm-dd", que é o formato nativo do R.
+
+Suponha que você carregue para o R um data frame desse tipo:
+
+```{r}
+
+df <- data.frame(data = c("20/01/2017", "01-02-2017", "11122017"),
+                 valor = rnorm(3),
+                 stringsAsFactors = FALSE)
+str(df)
+
+```
+
+Como você viu no output da função `str()`, o R converteu a coluna `data` para caracter por não saber bem o que ela significa. Sem o lubridate, seria trabalhoso converter essa coluna para o formato Date. Veja como isso é fácil com o lubridate:
+
+```{r}
+library(lubridate)
+
+df$data <- dmy(df$data)
+str(df)
+```
+
+O `lubridate` consegui com sucesso converter a coluna para Date. Com isso, ela está pronta para executar qualquer operação com datas nativas do R (ou até mesmo para usar como eixo de um gráfico no `ggplot2`).
+
+Também é possível trabalhar com o formato datetime:
+
+```{r}
+# carregue o pacote magrittr para poder usar os pipes
+library(magrittr)
+
+dmy_hms("01/09/1993 22:14:37")
+dmy_hms("01/09/1993 22:14:37") %>% class
+```
+Após converter um string para formato Date, é possível extrair seus componentes usando as funções `day()`, `month()`, `year()`, `hour()`, etc.
+
+```{r}
+
+today() %>% day()
+today() %>% month()
+now() %>% minute()
+
+```
+
+
+Também é possível fazer operações matemáticas com datas:
+
+```{r}
+now()
+now() + dminutes(2)
+now() + dweeks(3)
+```
+
+Uma função que eu acho especialmente útil e a utilizo bastante é a de arredondar datas, ou seja, de descobrir qual o primeiro ou último dia da semana / mês / ano / etc. de uma dada data:
+
+```{r}
+# retornar primeiro e ultimo dia da semana atual
+today() %>% floor_date("week")
+today() %>% ceiling_date("week")
+# Mas atencão! Muito cuidado com a classe do output!
+today() %>% floor_date("week") %>% class
+today() %>% ceiling_date("week") %>% class
+today() %>% ceiling_date("month") %>% class
+# para evitar erros no codigo, certifique-se sempre que o objeto pertence a classe...
+#... que ele deveria pertencer
+today() %>% ceiling_date("week") %>% as.Date() %>% class
+
+```
+
+
+## ggplot2
+
+`ggplot2` é o principal pacote de gráficos do R. Seu elevado grau de customização e facilidade de uso o tornaram não só um dos pacotes R mais baixados mas também uma das suítes gráficas mais populares do mundo, fazendo frente a softwares caros como Tableau, Qlikview e Power BI.
+
+É bom enfatizar que o `ggplot2` é orientado a data frames e não a objetos do tipo `ts`. Por exemplo, um uso comum do pacote para gráficos de séries temporais é por meio da função `ggplot2::geom_line()`:
+
+### Gráfico de linha {-}
+
+```{r}
+library(ggplot2)
+data(economics)
+str(economics)
+
+ggplot(data = economics, aes(x = date, y = uempmed)) + 
+  geom_line() +
+  # curva de tendencia
+  geom_smooth(method = "loess", se = FALSE)
+  
+```
+
+Neste gráfico, definimos o data frame `economics` como argumento de dados, a variável `date` como eixo horizontal e a variável `uempmed` (duração média do tempo desempregado) como eixo vertical. Para indicar uma curva de tendência (observe como a curva azil segue o movimento da série), usamos a função `geom_smooth()`.
+
+### Gráfico de pontos {-}
+
+Digamos então que gostaríamos de plotar duas variáveis (ex.: taxa de poupança pessoal e despesas pessoais) para analisar a relação entre ambas, considerando também o fator tempo. Isso pode ser feito da seguinte maneira:
+
+```{r g1, fig.height=5}
+
+ggplot(economics, aes(x = psavert, y = pce, color = date)) + 
+  geom_point()
+
+```
+
+### Gráfico de barras {-}
+
+Agora vamos combinar o melhor dos mundos do tidyverse: Suponha que você deseja calcular o desemprego médio anual dos últimos 10 anos e exibir esses dados em um gráfico de barras. Como isso seria feito?
+
+```{r geom_bar}
+# calcular o desemprego medio anual dos ultimos 10 anos
+economics %>% 
+  filter(year(date) >= year(today()) - 10) %>% # filtra os ultimos 10 anos
+  mutate(taxa_desemprego = 100 * unemploy / pop) %>% # calcula a taxa de desemprego
+  group_by(ano = year(date)) %>%  # agrupa os dados por ano
+  summarise(taxa_desemprego_media = mean(taxa_desemprego)) %>% # calcula a taxa de desemprego media por ano 
+  ggplot(aes(x = ano, y = taxa_desemprego_media)) +
+    geom_col() +
+    geom_label(aes(label = round(taxa_desemprego_media, 2))) +
+    theme_bw() +
+    labs(x = NULL, y = "Taxa de desemprego média (%)",
+         title = "Variação da taxa de desemprego médio anual",
+         subtitle = "Desde 2010 o indicador está em tendência de queda",
+         caption = "Gráfico feito com ggplot2")
+
+```
+
+### Histograma {-}
+
+Suponha que se deseja analisar a distribuição da variação da população mensal e anual. Um histograma é uma excelente ferramenta gráfica para esse objetivo:
+
+```{r geom_hist, message = FALSE, warning=FALSE, fig.height=5}
+# calcular a distribuicao do crescimento populacional mensal
+economics %>% 
+  mutate(variacao_populacional = (pop / lag(pop, 1)) - 1) %>% 
+  ggplot(aes(x = variacao_populacional)) + # um histograma precisa apenas da variavel para o eixo x
+    geom_histogram()
+```
+
+O histograma nos ajuda a identificar anomalias, como o período onde a população decresceu de um mês para o outro. Para saber quando isso aconteceu, usamos o código abaixo:
+
+```{r}
+
+economics %>% 
+  mutate(variacao_populacional = (pop / lag(pop, 1)) - 1) %>% 
+  filter(variacao_populacional < 0)
+
+```
+
+
+## Séries temporais no R
+
+Na verdade, todo o tidyverse é voltado para objetos do tipo data frame, com exceção do `purrr`, que foca em listas. Grande parte do universo de séries temporais é feita usando objetos do tipo `ts`. As funções de modelagem dos pacotes `forecast` e `mafs`, por exemplo, aceitam como inputs apenas objetos da classe `ts`.
+
+Portanto, nem sempre o conhecimento em tidyverse resolverá todos os problemas em programação R.
+
+Um objeto do tipo `ts` pode ser criado da seguinte maneira: 
+
+```{r}
+
+minha.st <- ts(rnorm(200), start = c(1991, 1), frequency = 12)
+# o tidyverse não oferece suporte nativo a objetos ts.
+# contudo, o pacote forecast consegue facilitar o plot de STs em graficos do ggplot2:
+library(forecast)
+autoplot(minha.st)
+```
+
+## Gráficos interativos com dygraphs
+
+Acha os gráficos do ggplot2 chatos e sem vida? Com o pacote `dygraphs` é possível criar gráficos com recursos interativos:
+
+```{r}
+
+library(dygraphs)
+dygraph(AirPassengers)
+
+```
+
+
+## Referências:
+
+* Uma [coletânea](https://github.com/sillasgonzaga/referencias-R/blob/master/README.md) de gráficos impressionantes feitos com ggplot2;  
+* [R graph gallery](http://www.r-graph-gallery.com/);  
+* [Manifesto tidyverse](https://cran.r-project.org/web/packages/tidyverse/vignettes/manifesto.html);  
+* Documentação do [dplyr](https://cran.r-project.org/web/packages/dplyr/vignettes/dplyr.html) e [tidyr](https://cran.r-project.org/web/packages/tidyr/vignettes/tidy-data.html);  
+* [Site](https://rstudio.github.io/dygraphs/) do pacote `dygraphs`.
+
+![](http://i.imgur.com/lBCBhhP.jpg)

@@ -1,0 +1,159 @@
+# Outros Métodos {#outros}
+
+```{r, message=FALSE}
+# install.packages(c("fpp", "vars"))
+
+library(fpp)
+library(forecast)
+library(tidyverse)
+library(vars)
+library(mafs)
+```
+
+
+*Forecasting* é um assunto amplo demais para ser compreendido em algumas poucas horas. Existem dezenas de métodos de previsão diferentes, cada um apropriada a situações específicas. Além das técnicas clássicas apresentadas aqui, existem ainda algumas outras que vem ganhando destaque.
+
+## Modelos de regressão dinâmica
+
+Suponha que você tenha em mãos dados "externos" à série temporal em análise que podem ser relevantes, como indicadores macroeconômicos, feriados, competidores, mudanças na lei, etc. Este subcapítulo aborda como incorporar dados externos (também chamados de regressores externos) a um modelo ARIMA.
+
+```{r}
+data("usconsumption")
+plot(usconsumption)
+
+```
+
+O dataset acima se refere à mudanças percentuais trimestrais em gastos pessoais (consumption) e na renda disponível das famílias americanas entre 1970 e 2010. Naturalmente, espera-se que as duas séries sejam correlacionadas:
+
+```{r}
+cor(usconsumption[,1], usconsumption[, 2])
+```
+
+Embora 0,43 não seja um valor muito significativo, vamos continuar com essa hipótese e tentar medir o efeito instantâneo que a variável explanatória renda possui na variável resposta consumo.
+
+
+```{block2, type='rmdcaution'}
+
+Antes de ajustar um modelo ARIMA nessa série de consumo, será necessário a diferenciar?
+
+```
+
+Vamos então medir a qualidade do ajuste de três modelos ARIMA: O primeiro sem regressor externo e com seleção automática do modelo ARIMA, o segundo usando o modelo ARIMA do primeiro e com regressor externo e o terceiro com seleção automática do modelo e com regressor externo:
+
+```{r}
+consumo <- usconsumption[,1]
+renda <- usconsumption[,2]
+
+(ajuste1 <- auto.arima(consumo, seasonal = FALSE))
+(ajuste2 <- Arima(consumo, order = c(0, 0, 3), xreg = renda))
+(ajuste3 <- auto.arima(consumo, xreg = renda, seasonal = FALSE))
+
+```
+
+Se usarmos a métrica AICc como referência, o melhor modelo ajustado é o terceiro. Observe que, ao adicionar um regressor externo ao modelo, o modelo ARIMA passa a ser diferente.
+
+Como seria então a previsão de um modelo que possui um regressor externo? Existem algumas possibilidades, sendo a mais simples prever o regressor usando sua própria média histórica:
+
+```{r}
+forecast(ajuste3, xreg = rep(mean(renda), 12)) %>% autoplot()
+```
+
+
+## Modelo de Vetores Autoregressivos (VAR)
+
+Suponha a hipótese de que haja uma relação de mão-dupla entre as duas variáveis analisadas acima. Isto é, não só a renda influencia o consumo como o consumo influencia a renda (pense no aumento da atividade econômica no Natal e os empregos temporários). Esse tipo de problema pode ser chamado de relacionamento bidirecional e é um exemplo de uso dos modelos VAR.
+
+Os modelos VAR foram criados com o objetivo de desenvolver modelos dinâmicos com o mínimo de restrições, nos quais todas as variáveis fossem tratadas como endógenas. Esses modelos examinam relações lineares entre cada variável e os valores defasados (os lags) entre cada variável e os valores defasados dela própria e de todas as variáveis. As únicas restrições impostas pelo modelo são a quantidade de variáveis a incluir ea quantidade de lags, que pode ser definido usando testes estatísticos.
+
+Modelos VAR são aplicados, entre outros, pelo Banco Central do Brasil para gerar previsões para o IPCA. Algumas variáveis usadas nos modelos do BCB são a variação da taxa de juros real, a variação cambinal nominal e a inflação dos pre;cos livres.
+
+Nos modelos VAR, o conjunto de variáveis é tratado de forma que cada uma influencia a outra. Matematicamente, para um conjunto de duas variáveis $y_1$ e $y_2$, temos:
+
+$y_{1, t}= c_1 + \phi_{11,1}y_{1,t-1} + \phi_{12,1}y_{2,t-1} + e_{1,t}$
+$y_{2, t}= c_2 + \phi_{21,1}y_{1,t-1} + \phi_{22,1}y_{2,t-1} + e_{2,t}$
+
+Pode-se observar que um um modelo VAR é uma generalização do modelo autoregressivo estudado antes e que contem uma equação para cada variável. O termo $\phi{ii,l}$ se refere a influência do lag $l$ da variável $y_i$ nela mesma, enquanto o termo $\phi{ij,l}$ se refere a influência do lag $l$ da variável $y_j$ na variável $y_i$.  
+
+No R, o modelo VAR são implementados pelo pacote `vars`. O procedimento é o seguinte:
+
+```{r}
+
+# 1 Decidir a quantidade de lags usados no modelo
+VARselect(usconsumption, lag.max = 8, type = "const")
+# 2 Ajustar o modelo com a quantidade de lags escolhida
+var.model <- VAR(usconsumption, p = 1, type = "const")
+# 3 Testar se os resíduos do modelo não são correlacionados
+serial.test(var.model, lags.pt = 10, type = "PT.asymptotic")
+# 4 Repetir o procedimento variando o numero de lags até a hipotese nula puder ser rejeitada
+var.model <- VAR(usconsumption, p = 2, type = "const")
+serial.test(var.model, lags.pt = 10, type = "PT.asymptotic")
+
+var.model <- VAR(usconsumption, p = 3, type = "const")
+serial.test(var.model, lags.pt = 10, type = "PT.asymptotic")
+
+# 5 Analisar o output do modelo
+summary(var.model)
+var.model %>% forecast(h = 4 * 2) %>% autoplot()
+
+```
+
+
+## Redes Neurais
+
+Redes neurais artificiais são métodos de previsão baseados em modelos matemáticos do cérebro humano. Permitem relacionamentos não-lineares complexos entre a variável dependente e a independente.
+
+Uma rede neural pode ser interpretada como uma rede de neurônios organizados em camadas. Os preditores ou inputs formam a camada de baixo e as previsões ou outputs formam a camada de cima. As camadas intermediárias, que podem existir ou não, são chamadas de ocultas.
+
+Cada preditor tem um coeficiente associado a ele, chamado de peso. Inicialmente, os pesos atribuídos aos inputs são valores aleatórios que são atualizados a medida em que a rede neural utiliza um algoritmo de aprendizagem para minimizar uma função de custo do modelo, que corresponde a uma métrica de erro.
+
+A formulação matemática de uma rede neural é razoavelmente complexa. Contudo, ajustá-la em uma série temporal é bem simples:
+
+```{r}
+energia <- readRDS("data/ts_energia.Rda")
+mod.rn <- nnetar(energia) %>% forecast(h = 36)
+
+autoplot(mod.rn)
+
+```
+
+
+
+## Pacote mafs
+
+O pacote `mafs` é basicamente um atalho para o pacote `forecast`. Sua função principal é `select_forecast()`, que recebe uma série temporal como input, divide-a em séries de treino e teste, ajusta 18 modelos diferentes no conjunto de treino, mede sua acurácia em relação ao conjunto de teste, seleciona o melhor modelo de acordo com a métrica de erro escolhida pelo usuário e retorna os resultados dos modelos ajustados e os valores previstos para o futuro.
+
+Um exemplo de uso:
+
+```{r rodar mafs, cache = TRUE}
+
+system.time({
+  mod.mafs <- select_forecast(energia, test_size = 24, horizon = 24, error = "MAPE")
+})
+
+
+```
+
+A função `select_forecast()` retorna como output uma lista de três elementos:
+
+1. O resultado da acurácia dos modelos na série de teste;  
+
+```{r}
+mod.mafs$df_models %>% 
+  arrange(MAPE) %>% 
+  knitr::kable()
+```
+
+2. A previsão gerada pelo melhor modelo (no caso, o auto.arima):
+
+```{r}
+mod.mafs$best_forecast %>% autoplot()
+```
+
+3. A comparação entre os valores da série de teste e da previsão resultante do modelo na série de treino:
+
+```{r}
+mod.mafs$df_comparison %>% knitr::kable()
+```
+
+
+![](http://i.imgur.com/lBCBhhP.jpg)

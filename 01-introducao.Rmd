@@ -1,0 +1,72 @@
+# Introdução a Séries Temporais {#introducao}
+
+
+## O que são Séries Temporais
+
+Quando uma variável é medida e registrada sequencialmente em tempo durante ou em
+um intervalo fixo, chamado de intervalo amostral, os dados resultantes são chamados de série
+temporal. Observações coletadas em um intervalo amostral no passado recebem o nome de
+série temporal histórica e são usadas para analisar e entender o passado e para prever o futuro.
+
+Em outras palavras, série temporal é uma sequência de dados em ordem cronológica.
+
+Exemplos:  
+* Cotação do dólar;  
+* Taxa de desemprego;  
+* Receita de vendas;  
+* Inflação  
+
+## Elementos das Séries Temporais {#elementos}
+
+Séries temporais possuem três tipos de padrões, também chamados de componentes:  
+
+* **Tendência**: ocorre quando a variável da série temporal apresenta um aumento ou
+diminuição a longo prazo;  
+* **Sazonalidade**: corresponde a um padrão fixo que se repete no mesmo período de
+tempo (Ex.: aumento das vendas de roupa de praia no verão);  
+* **Ciclos**: ocorre quando os dados mostram subidas e quedas que não possuem um
+período fixo;  
+* **Erro aleatório**: diz respeito aos movimentos irregulares explicados por causas
+desconhecidas.
+
+Alguns exemplos desses componentes são mostrados abaixo:
+
+```{r ch01-exemplos-componentes}
+# serie sem sazonalidade ou tendencia
+plot(rnorm(200, mean = 0, sd = 1), type = "l", xlab = "Observação", ylab = "")
+
+# serie com sazonalidade e sem tendencia
+plot(ldeaths)
+
+# serie com tendencia e sem sazonalidade
+x <- 1:500
+set.seed(123)
+x <- x/50 + rnorm(500)
+plot(x, type = "l")
+
+
+
+
+# serie com sazonalidade e tendencia
+data("AirPassengers")
+plot(AirPassengers)
+
+# plotando cada elemento separadamente
+plot(decompose(AirPassengers))
+
+```
+
+O pacote `forecast` traz ótimas funções para analisar os componentes de uma determinada série. Alguns exemplos são:
+
+```{r ch01-02}
+library(forecast)
+ggseasonplot(AirPassengers)
+ggsubseriesplot(AirPassengers)
+
+```
+
+
+
+Outro importante elemento de uma série temporal é a frequência, que é define o intervalo de tempo que separa uma observação (um dado) de outra: diária, semanal, mensal, trimestral, anual, etc.
+
+![](http://i.imgur.com/lBCBhhP.jpg)

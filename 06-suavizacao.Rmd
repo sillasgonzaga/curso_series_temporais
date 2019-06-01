@@ -1,0 +1,159 @@
+# Suavização exponencial {#suavizacao}
+
+Métodos de suavização exponencial produzem previsões a partir de médias ponderadas de observações passadas, onde o peso associado a cada observação cai a medida em que se recua mais no tempo. Ou seja, quanto mais recente a observação, maior será seu peso no modelo preditivo. Apesar de simples, é usado em larga escala nas mais diversas aplicações.
+
+Para este capítulo, será usada como exemplo a série temporal da cotação do dólar,  obtida com o pacote `quantmod`:
+
+```{r}
+library(tidyverse)
+library(forecast)
+library(lubridate)
+energia <- readRDS("data/ts_energia.Rda")
+
+```
+
+
+## Suavização simples
+
+A suavização simples exponencial é considerada útil para séries sem tendência ou sazonalidade. No R, ela é implementada pela função `forecast::ses()`
+
+Levando em conta que o modelo ingênuo (naive model) atribui peso 1 para a última observação e o modelo da média simples atribui peso igual para todas as observações passadas, a suavização simples poderia ser descrita como um meio termo entre ambos. Sua formulação matemática não é complexa:
+
+$\hat{y}_{T+1|T} = \alpha y_t + \alpha (1 - \alpha)y_{T-1} + \alpha (1 - \alpha)^2y_{T-2} + ...$
+
+O parâmetro $\alpha$ é chamado de parâmetro de suavização e está definido no intervalo de 0 a 1. Por exemplo:
+
+```{r}
+
+alpha <- 0.2
+for (i in 1:5) print((1 - alpha)^i)
+
+alpha <- 0.8
+for (i in 1:5) print((1 - alpha)^i)
+
+```
+Percebe-se pelos resultados da simulação acima que quanto maior o parâmetro $\alpha$, maior é o peso dado à observação imediatamente mais recente e menor o dado às demais.
+
+O valor de $\alpha$ pode ser "definido" subjetivamente, utilizando conhecimentos empíricos. Contudo, a maneira mais precisa de escolher esse valor é por meio de um algoritmo de otimização, que estimará $\alpha$ a partir dos dados obtidos
+
+Suponha que não façamos a mínima ideia do melhor valor de $\alpha$ para a série temporal da cotação do dólar. Vamos testar três valores:
+
+```{r, message = FALSE, warning=FALSE}
+
+alpha1 <- ses(energia, alpha = 0.1, h = 6)
+alpha2 <- ses(energia, alpha = 0.5, h = 6)
+alpha3 <- ses(energia, alpha = 0.9, h = 6)
+
+# calculando o erro de cada ajuste
+list(alpha1, alpha2, alpha3) %>% map(accuracy)
+
+
+plot(alpha1, plot.conf=FALSE, ylab = "", main="", fcol="white")
+lines(fitted(alpha1), col="blue")
+lines(fitted(alpha2), col="red")
+lines(fitted(alpha3), col="green")
+lines(alpha1$mean, col="blue", type="o")
+lines(alpha2$mean, col="red", type="o")
+lines(alpha3$mean, col="green", type="o")
+legend("topleft",lty=1, col=c(1,"blue","red","green"),
+       c("serie original", expression(alpha == 0.1),
+         expression(alpha == 0.5),
+         expression(alpha == 9)),
+       pch=1)
+
+# qual o valor otimo encontrado para alpha nesse caso?
+ses(energia) %>% summary
+
+```
+
+O valor de $\alpha$ encontrado ffoi de 0,9999, praticamente um modelo ingênuo.
+
+## Linear de Holt
+
+Holt criou uma extensão ao método de suavização simples que permite prever dados com tendência que possui dois parâmetros $\alpha$ e $\beta$. Matematicamente, temos:
+
+$\hat{y}_{t+h}=l_t + hT_t$
+
+$l_t = \alpha y_t + (1 - \alpha)(l_{t-1} + T_{t-1})$
+
+$T_t = \beta (l_t - l_{t-1}) + (1 - \beta)T_{t-1}$
+
+Onde $T_t$ corresponde a uma estimativa do componente de tendência e $l_t$ uma estimativa do componente de nível da série no período $t$. Assim como $\alpha$, o parâmetro $\beta$ também está definido no intervalo [0,1].
+
+Recomenda-se que $l_0$ e $T_0$ sejam inicializados como $y_1$ e $y_2 - y_1$, respectivamente.
+
+No R, a função para aplicar o modelo linear de Holt é `forecast::holt()`. Os parâmetros podem ser impostos manualmente ou calculados automaticamente por otimização:
+
+```{r}
+
+mod1 <- holt(energia, alpha = 0.6, beta = 0.4)
+mod2 <- holt(energia)
+mod2$model
+plot(mod1)
+lines(fitted(mod1), col = "blue")
+lines(fitted(mod2), col = "red")
+# calculando a qualidade de ajuste
+list(mod1, mod2) %>% map(accuracy)
+
+```
+
+
+
+## Holt-winter aditivo e multiplicativo
+
+Uma evolução do modelo linear de Holt foi criado por Holt e Winter para possibilitar a modelagem de séries temporais por suavização exponencial que também possuam um componente sazonal. O método de Holt-Winters possui três equações para calcular os componentes $l_t$ de nível, $T_t$ de tendência e $s_t$ de sazonalidade, com os parâmetros $\alpha$, $\beta$ e $\gamma$.
+
+Esse método possui duas variações, que dependem da natureza do componente sazonal. O método **aditivo** é preferido quand as variações sazonais são razoavelmente constantes por toda a série, enquanto o **multiplicativo** pode ser usado quando as variações sazonais são proporcionais à mudança do nível da série.
+
+A formulação matemática completa, um pouco mais complexa que o modelo linear de Holt, pode ser encontrada [aqui](http://www.portalaction.com.br/series-temporais/34-suavizacao-exponencial-de-holt-winters-hw).
+
+No R, este método é implementado pela função `forecast::hw()`:
+
+```{r}
+# vamos testar tanto o metodo aditivo quanto o multiplicativo para a serie de exemplo
+ajuste_ad <- hw(energia, seasonal = "additive")
+ajuste_mult <- hw(energia, seasonal = "multiplicative")
+
+
+plot(energia)
+lines(fitted(ajuste_ad), col = "blue")
+lines(fitted(ajuste_mult), col = "red")
+
+# calculando a qualidade de ajuste
+list(ajuste_ad, ajuste_mult) %>% map(accuracy)
+
+
+```
+
+## Seleção automática do melhor modelo de suavização exponencial
+
+Além dos apresentados neste capítulo, existem muito mais variações de métodos de suavização exponencial. São 15 no total, que são:
+
+![](http://i.imgur.com/gDdC0DE.png)
+
+Felizmente, o pacote `forecast` traz uma função que automatiza internamente a seleção do melhor método de previsão, através da função `ets()`:
+
+```{r}
+# ajustando um modelo
+modelo.ets <- ets(energia)
+# verificando o output
+summary(modelo.ets)
+
+```
+
+Para a série temporal de exemplo, a função retornou um modelo ETS(A, N, A). A primeira letra se refere ao componente de erro e pode ser A (aditivo) ou M (multiplicativo), a segunda ao componente de tendência e pode ser N (não possui), A (aditivo), Ad (aditivo amortecido), M (multiplicativo) ou Md (multiplicativo amortecido) e a terceira ao componente de sazonalidade, que pode ser N, A ou M.
+
+Ou seja, o algoritmo da função detectou que a série de exemplo possui componente de erro aditivo, não possui tendência e a sazonalidade é aditiva.
+
+O ajuste do modelo, graficamente, é:
+
+```{r}
+
+plot(energia)
+lines(fitted(modelo.ets), col = "red")
+
+```
+
+
+![](http://i.imgur.com/lBCBhhP.jpg)
+

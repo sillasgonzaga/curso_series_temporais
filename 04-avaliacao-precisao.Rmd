@@ -1,0 +1,230 @@
+# Avaliação de precisão de modelos de séries temporais {#avaliacao}
+
+Suponha que $y_i$ seja uma observação real de uma série temporal no período $i$ e $\hat{y}_i$ seja uma previsão de $y_i$. O erro de previsão no ponto $i$ é simplesmente $e_i = y_i - \hat{y}_i$. Para calcular o erro "geral" de um modelo preditivo de série temporal, diversas existem diversas métricas.
+
+Para demonstrar o uso dessas métricas, usaremos uma série temporal obtida pelo pacote `BETS`:
+
+```{r, message = FALSE, warning=FALSE}
+# carregar pacotes usados
+# install.packages("BETS")
+library(BETS)
+library(forecast)
+library(tidyverse)
+
+```
+
+```{r}
+# baixar serie temporal de exemplo deste capitulo
+BETSsearch("industria", periodicity = "M", view = FALSE) %>% 
+  head(10) %>% 
+  knitr::kable()
+```
+
+A busca pela string "indústria" nos retorna alguns datasets sobre o tema. Usaremos a série de número 1404, que é sobre o consumo de energia elétrica no Brasil em GWh e de frequência mensal.
+
+```{r}
+energia <- BETSget(1404)
+# Salvar para uso posterior
+saveRDS(energia, "data/ts_energia.Rda")
+
+# plotando a serie para a conhecer
+autoplot(energia) +
+  labs(x = NULL, y = "Consumo (Gwh)")
+```
+
+É possível perceber que a série apresenta uma tendência contínua de alta desde o início. As pequenas variações podem ser interpretadas como componenente sazonal, o que é mostrado no gráfico de decomposição:
+
+```{r}
+# analisando os componentes:
+energia %>% decompose() %>% autoplot
+```
+
+Pelo gráfico, temos que tanto o componente de tendência quanto o de sazonalidade são bem evidentes na série.
+
+Voltando ao tema do capítulo. Para ilustrar o conceito das métricas tratadas, vamos nos utilizar de dois modelos de previsão: um complexo, de redes neurais, e outro simples, um sazonal ingênuo.
+
+
+```{r, warning=FALSE}
+mod.rn <- nnetar(energia)
+mod.ingenuo.saz <- snaive(energia, h = 12)
+
+# plotando os dois ajustes junto à curva original
+autoplot(energia) +
+  # plota modelo de rede neural
+  geom_line(aes(y = mod.rn$fitted, color = "Redes neurais"),
+            linetype = "dashed", alpha = 0.7) +
+  # plotar modelo sazonal ingenuo
+  geom_line(aes(y = mod.ingenuo.saz$fitted, color = "Ingênuo sazonal"),
+            linetype = "dashed", alpha = 0.5) +
+  # redefinir cores
+  scale_color_manual(name = NULL, values = c("blue", "red")) +
+  theme_classic() +
+  # posicionar legenda
+  theme(legend.position = "bottom")
+  
+
+
+```
+
+Pelo gráfico, poderíamos concluir que o ajuste obtido com o modelo de redes neurais é superior ao sazonal ingênuo, que costuma errar o nível da série temporal.
+
+Contudo, para ter certeza disso, precisamos avaliar os modelos com alguma métrica de precisão (ou de erro).
+
+
+## Medidas de precisão
+
+Podemos dividir as métricas de precisão em dois grupos: os baseados em escala e os baseados em percentuais.
+
+### Métricas baseadas em escala
+
+Você deve ter observado que $e_i$ possui a mesma escala da variável resposta $y_i$. Isto é, se o objeto do modelo é prever o consumo de gasolina de um carro, dado em litros, então o erro de previsão também será dado em litros. As duas métricas de erro baseadas em escala são o MAE (erro médio absoluto) e o RMSE (raiz do erro quadrático médio), calculados como:
+
+$MAE = media(|e_i|)$
+
+$RMSE = \sqrt(media(e_i^2))$
+
+Entre as duas métricas, a MAE é mais fácil e simples de explicar. Contudo, o output da RMSE representa o que vários algoritmos de previsão são escritos para minimizar. Ela pode ser compreendida como uma medida análoga ao desvio padrão do modelo.
+
+### Métricas baseadas em percentuais
+
+Se o objetivo de uma análise é avaliar a qualidade de ajuste e a acurácia de diferentes modelos para uma mesma série, as métricas baseadas em escala não são um problema.
+
+Porém, quando se deseja avaliar a performance de um (ou mais) modelo para diversas séries temporais de escalas diferentes (é muito incomum que um conjunto grande de séries possuam a mesma escala, mesmo que tenham a mesma unidade de medida), deve-se optar pelas métricas baseadas em percentuais. 
+
+Definindo $p_i = 100\times e_i/y_i$, temos que a métrica mais comum é o MAPE (erro absoluto percentual médio):
+
+$MAPE = media(|p_i|)$
+
+Contudo, o MAPE possui uma grande desvantagem: é indefinido quando há pelo menos um caso em que $y_i = 0$. Para contornar essa situação e poder usar uma métrica de erro independente de escala em uma série temporal que possa apresentar valores muito próximos ou iguais a zero, podemos usar o MASE (erro médio de escala absoluto), que é a proporção de erros de previsão em relação aos erros de uma previsão ingênuo.
+
+A função `forecast::accuracy()` retorna todas essas métricas e mais algumas outras para um dado modelo preditivo:
+
+```{r}
+# modelo de redes neurais
+accuracy(mod.rn)
+# modelo ingenuo sazonal
+accuracy(mod.ingenuo.saz)
+
+```
+
+
+## Desempenho fora de amostra: Overfitting e underfitting
+
+Conforme discutido no [capítulo anterior](#modelo-preditivo), a melhor maneira de avaliar o desempenho preditivo de um modelo de séries temporais é avaliar sua performance em dados nunca vistos pelo modelo. Repetimos o procedimento já descrito nos dois modelos usados como exemplo:
+
+```{r}
+
+# vamos construir dois modelos para serem comparados: um de rede neural e
+# um modelo ingenuo
+treino <- window(energia, end = c(2015, 12))
+teste <- window(energia, start = c(2016, 1), end = c(2016, 12))
+
+# vamos "esconder" o conjunto de teste dos modelos:
+mod.rn <- nnetar(treino) %>% forecast(h = length(teste))
+mod.ingenuo.saz <- snaive(treino, h = 12) %>% forecast(h = length(teste))
+
+# a funcao accuracy aceita como argumento um vetor numerico de teste, sobre o qual
+# a acuracia do modelo sera avaliada
+accuracy(mod.rn, teste) %>% round(3)
+accuracy(mod.ingenuo.saz, teste) %>% round(3)
+
+
+
+```
+
+Os resultados são no mínimo interessantes: enquanto o desempenho do modelo de redes neurais é bem melhor na série de treino (possui MAE e MAPE mais de duas vezes menor), é o modelo sazonal ingênuo que apresenta o melhor desempenho na série de teste, com exceção do RMSE.
+
+Esse é um exemplo claro que ilustra os conceitos de overfitting e underfitting, também conhecido como o tradeoff entre viés e variância.
+
+Conceitualmente, viés é o erro que ocorre quando o algoritmo do modelo preditivo assume pressupostos errados (ou demasiadamente simples). Um alto viés implica na possibilidade de que o modelo não incorpore elementos importantes do conjunto de treino, causando o **underfitting**.
+
+Variância é o erro oriundo de pequenas variações no conjunto de treino. Quando um modelo é complexo demais a ponto de tentar representar todas as pequenas variações observadas no conjunto de treino, temos o **overfitting**.
+
+Nos nossos dois modelos de estudo, apenas analisando os resultados de acurácia nos conjuntos de treino e teste, podemos observar que o modelo de redes neurais sofre de overfitting, pois apresenta um excelente desempenho na série de treino mas um desempenho inferior na série de teste comparado com um modelo simples, que compreensivelmente sofre de underfitting.
+
+Essa representação visual nos ajuda a entender esses dois conceitos:  
+
+![](http://i.imgur.com/VkoFdTA.png)
+
+
+Também é possível analisar a qualidade das previsões dos modelos graficamente:
+
+```{r}
+
+# plotando as previsoes contra o real:
+autoplot(teste) +
+  geom_point() +
+  geom_line(aes(y = mod.rn$mean, color = "Redes neurais"),
+            linetype = "dashed") +
+  geom_line(aes(y = mod.ingenuo.saz$mean, color = "Ingênuo sazonal"),
+            linetype = "dashed") +
+  scale_color_manual(name = NULL, values = c("blue", "red")) +
+  theme(legend.position = "bottom") 
+  
+```
+
+Dá para observar que o modelo ingênuo sazonal apresenta um desempenho praticamente perfeito no segundo semestre de 2016, compensando o erro alto no primeiro semestre. Será que isso é um padrão? É mais fácil prever o segundo semestre do que o primeiro? Será que, caso o modelo ingênuo sazonal seja sempre melhor no segundo semestre e o de redes neurais no primeiro, é possível construir um modelo de previsão misto (ou um `ensemble model`) que se beneficie dessa informação? Fica o exercício para o leitor.
+
+## Validação cruzada
+
+Uma versão mais sofisticada da metodologia de separar um conjunto de dados em treino e teste é chamado de validação cruzada (cross-validation). Para dados de séries temporais, esse método consiste em começar com um conjunto de treino pequeno (idealmente o número mínimo de observações para se construir um modelo), obter previsões, compará-las com a série de teste e armazenar o erro obtido em uma matriz. Na próxima iteração, a primeira observação da série de treino passa a compor a série de treino, sendo a de teste deslocada em um período.
+
+Visualmente, validação cruzada funciona assim:
+
+[![](http://i.imgur.com/g769CES.png)](https://rpubs.com/crossxwill/time-series-cv)
+
+Um exemplo de implementação da validação cruzada em código é mostrada e comentada abaixo:
+
+```{r crossvalidation, eval=TRUE, cache = TRUE, warning=FALSE}
+
+k <- 36 # tamanho minimo do conjunto de treino
+n <- length(energia) # tamanho do conjunto total de dados
+n_loops <- n - k
+st <- tsp(energia)[1]+(k-2)/12 # definir ponto de stop do loop
+
+matriz_erros <- matrix(NA, n_loops, 2) # construir matriz pra armazenar erros do loop
+
+
+for(i in 1:n_loops) {
+  # definir conjuntos de treino e teste
+  treino <- window(energia, end=st + i/12)
+  teste <- window(energia, start= st + (i+1)/12, end=st + (i+12)/12)
+  
+  # ajustar modelo de RN
+  fit1 <- nnetar(treino)
+  fcast1 <- forecast(fit1, h = length(teste))$mean
+  mape1 <- mean(abs(fcast1 - teste)/teste)
+  
+  # ajustar modelo sazonal ingenuo
+  fit2 <- snaive(treino)
+  fcast2 <- forecast(fit2, h=length(teste))$mean
+  mape2 <- mean(abs(fcast2 - teste)/teste)
+  
+  # armazenar resultados na matriz
+  matriz_erros[i, 1] <- mape1
+  matriz_erros[i, 2] <- mape2
+  
+}
+
+
+# transformar data frame para formato tidy
+df_erros <- matriz_erros %>% 
+  as.data.frame() %>%
+  mutate(loop = 1:nrow(.)) %>% 
+  setNames(c("redes_neurais", "ingenuo_sazonal", "loop")) %>%
+  gather(modelo, valor, 1:2)
+
+ggplot(df_erros, aes(x = loop, y = valor, color = modelo)) + 
+  geom_line()
+
+```
+
+Pelo gráfico acima, não é possível concluir que, analisando o cenário da validação cruzada, existe diferença significativa entre o MAPE dos dois modelos analisados.
+
+## Referências
+
+* Ótimo post no [blog do Regis](http://regisely.com/blog/bias-variance/) sobre o tradeoff entre viés e variância;  
+* [ANOTHER LOOK AT FORECAST-ACCURACY METRICS FOR INTERMITTENT DEMAND](https://robjhyndman.com/papers/foresight.pdf), um paper do Rob Hyndman sobre as principais métricas de erros usadas em séries temporais.
+
+
+![](http://i.imgur.com/lBCBhhP.jpg)
