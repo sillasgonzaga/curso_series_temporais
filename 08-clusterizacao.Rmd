@@ -33,9 +33,8 @@ Neste post, iremos demonstrar como é possível encontrar grupos naturais analis
 
 Para esta análise, serão usados os seguintes pacotes:
 
-```{r}
+```{r, message = FALSE, warning = FALSE}
 library(tidyverse)
-library(quantmod) # baixar cotações
 library(dtwclust) # clusterizacao de series temporais
 ```
 
@@ -51,9 +50,7 @@ moedas <- c("USD/ARS", "USD/VEF", "USD/BOB",
 
 Vamos então, de maneira iterativa para cada uma das moedas do vetor definido acima, obter a série temporal da cotação dos últimos 180 dias e salvar os resultados em uma lista:
 
-```{r obter cotacoes, include=FALSE}
-
-
+```{r obter cotacoes, include=FALSE, eval = FALSE}
 list_currencies_data <- moedas %>% 
   map(getSymbols.oanda,
       auto.assign = FALSE)
@@ -70,7 +67,7 @@ matrix_currencies %>%
 ```
 
 ```{r, message = FALSE, warning = FALSE}
-df_moedas <- read_csv("data/moedas.csv")
+df_moedas <- readr::read_csv("https://raw.githubusercontent.com/sillasgonzaga/curso_series_temporais/master/data/moedas.csv")
 ```
 
 ### Transformação dos dados
@@ -161,5 +158,4 @@ cl_br %>%
 ```
 
 De fato, o comportamento entre as séries é relativamente parecido.
-
 

@@ -1,6 +1,6 @@
 # Outros Métodos {#outros}
 
-```{r, message=FALSE}
+```{r, message = FALSE, warning = FALSE}
 # install.packages(c("fpp", "vars"))
 
 library(fpp)

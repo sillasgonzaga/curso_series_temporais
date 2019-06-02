@@ -4,7 +4,7 @@ Métodos de suavização exponencial produzem previsões a partir de médias pon
 
 Para este capítulo, será usada como exemplo a série temporal da cotação do dólar,  obtida com o pacote `quantmod`:
 
-```{r}
+```{r, message = FALSE, warning = FALSE}
 library(tidyverse)
 library(forecast)
 library(lubridate)

@@ -1,6 +1,6 @@
 # Decomposição de Séries Temporais {#decomposicao}
 
-```{r ch05-01, message = FALSE}
+```{r ch05-01, message = FALSE, warning = FALSE}
 # install.packages("seasonal")
 
 library(BETS)

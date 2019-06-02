@@ -4,7 +4,7 @@ Modelos ARIMA são outra classe de modelos populares em *forecasting*. A diferen
 
 Para este capítulo, continuaremos usando a série temporal do consumo de energia pela indústria no Brasil.
 
-```{r, message=FALSE}
+```{r, message = FALSE, warning = FALSE}
 library(forecast)
 library(tidyverse)
 energia <- readRDS("data/ts_energia.Rda")

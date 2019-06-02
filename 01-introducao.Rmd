@@ -58,7 +58,7 @@ plot(decompose(AirPassengers))
 
 O pacote `forecast` traz ótimas funções para analisar os componentes de uma determinada série. Alguns exemplos são:
 
-```{r ch01-02}
+```{r ch01-02, message = FALSE, warning = FALSE}
 library(forecast)
 ggseasonplot(AirPassengers)
 ggsubseriesplot(AirPassengers)
@@ -70,3 +70,46 @@ ggsubseriesplot(AirPassengers)
 Outro importante elemento de uma série temporal é a frequência, que é define o intervalo de tempo que separa uma observação (um dado) de outra: diária, semanal, mensal, trimestral, anual, etc.
 
 ![](http://i.imgur.com/lBCBhhP.jpg)
+
+
+## Séries temporais no R
+
+Na verdade, todo o tidyverse é voltado para objetos do tipo data frame, com exceção do `purrr`, que foca em listas. Grande parte do universo de séries temporais é feita usando objetos do tipo `ts`. As funções de modelagem dos pacotes `forecast` e `mafs`, por exemplo, aceitam como inputs apenas objetos da classe `ts`.
+
+Portanto, nem sempre o conhecimento em tidyverse resolverá todos os problemas em programação R.
+
+Um objeto do tipo `ts` pode ser criado da seguinte maneira: 
+
+```{r}
+
+minha.st <- ts(rnorm(200), start = c(1991, 1), frequency = 12)
+# o tidyverse não oferece suporte nativo a objetos ts.
+# contudo, o pacote forecast consegue facilitar o plot de STs em graficos do ggplot2:
+library(forecast)
+autoplot(minha.st)
+```
+
+## Gráficos interativos com dygraphs
+
+Acha os gráficos do ggplot2 chatos e sem vida? Com o pacote `dygraphs` é possível criar gráficos com recursos interativos:
+
+```{r}
+
+library(dygraphs)
+dygraph(AirPassengers)
+
+```
+
+
+<div class="alert alert-danger"
+<strong>Exercícios:</strong>
+<br>
+- Instale o pacote [BETS](https://github.com/pedrocostaferreira/BETS)  
+- Carregue os pacotes BETS e forecast  
+- Use a função BETSsearch() para pesquisar series temporais de um tema de sua preferencia  
+- Após escolher uma série temporal, baixe-a usando a função BETS.get(). Armazene o resultado na variavel ´ts.exemplo´.  
+- Analise os componentes de tendencia, sazonalidade e ciclo usando as funcões mostradas (plot, ggseasonplot, ggsubseriesplot, ggmonthplot, etc)  
+- Repita o procedimento para o pacote gtrendsBR
+</div>
+
+

@@ -41,17 +41,19 @@ energia %>% decompose() %>% autoplot
 
 Pelo gráfico, temos que tanto o componente de tendência quanto o de sazonalidade são bem evidentes na série.
 
-Voltando ao tema do capítulo. Para ilustrar o conceito das métricas tratadas, vamos nos utilizar de dois modelos de previsão: um complexo, de redes neurais, e outro simples, um sazonal ingênuo.
+Voltando ao tema do capítulo. Para ilustrar o conceito das métricas tratadas, vamos nos utilizar de dois modelos de previsão: um complexo, de suavização exponencial, e outro simples, um sazonal ingênuo.
 
 
 ```{r, warning=FALSE}
-mod.rn <- nnetar(energia)
+
+
+mod.rn <- ets(energia)
 mod.ingenuo.saz <- snaive(energia, h = 12)
 
 # plotando os dois ajustes junto à curva original
 autoplot(energia) +
-  # plota modelo de rede neural
-  geom_line(aes(y = mod.rn$fitted, color = "Redes neurais"),
+  # plota modelo de Suavização exponencial
+  geom_line(aes(y = mod.rn$fitted, color = "Suavização exponencial"),
             linetype = "dashed", alpha = 0.7) +
   # plotar modelo sazonal ingenuo
   geom_line(aes(y = mod.ingenuo.saz$fitted, color = "Ingênuo sazonal"),
@@ -66,7 +68,7 @@ autoplot(energia) +
 
 ```
 
-Pelo gráfico, poderíamos concluir que o ajuste obtido com o modelo de redes neurais é superior ao sazonal ingênuo, que costuma errar o nível da série temporal.
+Pelo gráfico, poderíamos concluir que o ajuste obtido com o modelo de Suavização exponencial é superior ao sazonal ingênuo, que costuma errar o nível da série temporal.
 
 Contudo, para ter certeza disso, precisamos avaliar os modelos com alguma métrica de precisão (ou de erro).
 
@@ -100,7 +102,7 @@ Contudo, o MAPE possui uma grande desvantagem: é indefinido quando há pelo men
 A função `forecast::accuracy()` retorna todas essas métricas e mais algumas outras para um dado modelo preditivo:
 
 ```{r}
-# modelo de redes neurais
+# modelo de Suavização exponencial
 accuracy(mod.rn)
 # modelo ingenuo sazonal
 accuracy(mod.ingenuo.saz)
@@ -114,7 +116,7 @@ Conforme discutido no [capítulo anterior](#modelo-preditivo), a melhor maneira 
 
 ```{r}
 
-# vamos construir dois modelos para serem comparados: um de rede neural e
+# vamos construir dois modelos para serem comparados: um de Suavização exponencial e
 # um modelo ingenuo
 treino <- window(energia, end = c(2015, 12))
 teste <- window(energia, start = c(2016, 1), end = c(2016, 12))
@@ -132,7 +134,7 @@ accuracy(mod.ingenuo.saz, teste) %>% round(3)
 
 ```
 
-Os resultados são no mínimo interessantes: enquanto o desempenho do modelo de redes neurais é bem melhor na série de treino (possui MAE e MAPE mais de duas vezes menor), é o modelo sazonal ingênuo que apresenta o melhor desempenho na série de teste, com exceção do RMSE.
+Os resultados são no mínimo interessantes: enquanto o desempenho do modelo de Suavização exponencial é bem melhor na série de treino (possui MAE e MAPE mais de duas vezes menor), é o modelo sazonal ingênuo que apresenta o melhor desempenho na série de teste, com exceção do RMSE.
 
 Esse é um exemplo claro que ilustra os conceitos de overfitting e underfitting, também conhecido como o tradeoff entre viés e variância.
 
@@ -140,7 +142,7 @@ Conceitualmente, viés é o erro que ocorre quando o algoritmo do modelo prediti
 
 Variância é o erro oriundo de pequenas variações no conjunto de treino. Quando um modelo é complexo demais a ponto de tentar representar todas as pequenas variações observadas no conjunto de treino, temos o **overfitting**.
 
-Nos nossos dois modelos de estudo, apenas analisando os resultados de acurácia nos conjuntos de treino e teste, podemos observar que o modelo de redes neurais sofre de overfitting, pois apresenta um excelente desempenho na série de treino mas um desempenho inferior na série de teste comparado com um modelo simples, que compreensivelmente sofre de underfitting.
+Nos nossos dois modelos de estudo, apenas analisando os resultados de acurácia nos conjuntos de treino e teste, podemos observar que o modelo de Suavização exponencial sofre de overfitting, pois apresenta um excelente desempenho na série de treino mas um desempenho inferior na série de teste comparado com um modelo simples, que compreensivelmente sofre de underfitting.
 
 Essa representação visual nos ajuda a entender esses dois conceitos:  
 
@@ -154,7 +156,7 @@ Também é possível analisar a qualidade das previsões dos modelos graficament
 # plotando as previsoes contra o real:
 autoplot(teste) +
   geom_point() +
-  geom_line(aes(y = mod.rn$mean, color = "Redes neurais"),
+  geom_line(aes(y = mod.rn$mean, color = "Suavização exponencial"),
             linetype = "dashed") +
   geom_line(aes(y = mod.ingenuo.saz$mean, color = "Ingênuo sazonal"),
             linetype = "dashed") +
@@ -163,12 +165,19 @@ autoplot(teste) +
   
 ```
 
-Dá para observar que o modelo ingênuo sazonal apresenta um desempenho praticamente perfeito no segundo semestre de 2016, compensando o erro alto no primeiro semestre. Será que isso é um padrão? É mais fácil prever o segundo semestre do que o primeiro? Será que, caso o modelo ingênuo sazonal seja sempre melhor no segundo semestre e o de redes neurais no primeiro, é possível construir um modelo de previsão misto (ou um `ensemble model`) que se beneficie dessa informação? Fica o exercício para o leitor.
+Dá para observar que o modelo ingênuo sazonal apresenta um desempenho praticamente perfeito no segundo semestre de 2016, compensando o erro alto no primeiro semestre. Será que isso é um padrão? É mais fácil prever o segundo semestre do que o primeiro? Será que, caso o modelo ingênuo sazonal seja sempre melhor no segundo semestre e o de Suavização exponencial no primeiro, é possível construir um modelo de previsão misto (ou um `ensemble model`) que se beneficie dessa informação? Fica o exercício para o leitor.
 
 ## Referências
 
 * Ótimo post no [blog do Regis](http://regisely.com/blog/bias-variance/) sobre o tradeoff entre viés e variância;  
 * [ANOTHER LOOK AT FORECAST-ACCURACY METRICS FOR INTERMITTENT DEMAND](https://robjhyndman.com/papers/foresight.pdf), um paper do Rob Hyndman sobre as principais métricas de erros usadas em séries temporais.
+
+<div class="alert alert-danger"
+<strong>Exercícios:</strong>
+<br>
+- Baixe uma série temporal usando o BETS (pode ser a mesma do capítulo 01) e ajuste três modelos nela: ARIMA, Suavizacao exponencial e Media simples.  
+- Calcule a acurácia dentro e fora da amostra.  
+</div>
 
 
 ![](http://i.imgur.com/lBCBhhP.jpg)

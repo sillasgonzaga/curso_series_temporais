@@ -1,6 +1,6 @@
 # Regressão {#regressao}
 
-```{r}
+```{r, message = FALSE, warning = FALSE}
 library(tidyverse)
 library(GGally)
 library(broom)
@@ -18,7 +18,7 @@ Neste módulo, usaremos como exemplo o dataset do Kaggle de [Bicicletas comparti
 
 
 ```{r regressao-ch02, message = FALSE}
-df <- readr::read_csv("data/Bike-Sharing-Dataset/day.csv")
+df <- readr::read_csv("https://raw.githubusercontent.com/sillasgonzaga/curso_series_temporais/master/data/Bike-Sharing-Dataset/day.csv")
 # dando olhada nos dados
 # glimpse(df)
 
@@ -270,7 +270,17 @@ Os dois modelos apresentam resultados semelhantes de erro. Portanto, pelo menos 
 * [Pressupostos sobre regressão linear](http://r-statistics.co/Assumptions-of-Linear-Regression.html);  
 * [Datasets](https://archive.ics.uci.edu/ml/datasets.html?area=&att=&format=&numAtt=&numIns=&sort=nameUp&task=reg&type=&view=table) para você praticar regressão linear.
 
+<div class="alert alert-danger"
+<strong>Exercícios:</strong>
+<br>
+- Importe [este dataset de consumo de petróleo](https://github.com/sillasgonzaga/curso_series_temporais/blob/master/data/petrol_consumption.csv) para o R.  
+- Qual a variável resposta?     
+- Quais variáveis explanatórias incluir no modelo?  
+- Quais gráficos para analisar as variáveis e os modelos?  
+</div>
+
 
 ![](http://i.imgur.com/lBCBhhP.jpg)
+
 
 
