@@ -1,0 +1,165 @@
+# Aplicações avançadas em séries temporais: Clusterização {#clusterizacao}
+
+
+## Motivação
+
+É possível encontrar em diversas fontes, como em livros ou na Internet, ótimos conteúdos sobre Séries Temporais (um bom exemplo é o [post no blog do IBPAD](http://www.ibpad.com.br/blog/analise-de-dados/11-referencias-para-voce-aprender-series-temporais-com-r/) sobre algumas dessas referências). Contudo, muitas vezes esses materiais acabam sendo repetitivos, abordando basicamente os mesmos temas: sazonalidade, tendência, ARIMA, forecasting, etc. Isso dificulta ao praticante de séries temporais dar o próximo passo, isto é, avançar em seus estudos sobre o tema e ampliar seu conhecimento. Por isso, este post se destina a apresentar técnicas avançadas em Séries Temporais para você turbinar suas análises.
+
+## Introdução de técnicas avançadas em Séries Temporais
+
+O artigo [Time-Series Data Mining](https://www.researchgate.net/publication/261722458_Time-Series_Data_Mining), de Esling e Agon (2012), lista algumas técnicas de mineração de dados aplicadas a séries temporais, que são:  
+
+1. **Query by content**: localizar padrões conhecidos em um banco de dados de séries temporais;  
+2. **Detecção de anomalias**: detectar padrões incomuns em séries, como possíveis fraudes em transações financeiras;  
+3. **Descoberta de *motifs*:** descobrir subsequências dentro de uma série temporal que se repetem em cadeias discretas;  
+4. **Classificação**: distinguir séries temporais em rótulos ou classes conhecidas;  
+5. **Segmentação**: Criar uma representação reduzida da série temporal;  
+6. **Previsão**: estimar valores futuros baseado em valores passados da série;  
+7. **Clusterização**: agrupar diferentes séries temporais em clusteres similares entre si.  
+
+Todas essas técnicas podem ser implementadas no R graças a pacotes disponibilizados gratuitamente. Cada um desses tópicos renderia um (ou mais) post, portanto vou focar no momento apenas em clusterização.
+
+## Clusterização de séries temporais
+
+Clusterização é o processo de descobrir grupos, chamados de clusteres, em um conjunto de dados. O objetivo é determinar os clusteres mais homogêneos possíveis, isto é, os grupos em que os elementos sejam mais similares a elementos do mesmo cluster e mais diferentes de elementos de clusteres diferentes. Por exemplo, seria o mesmo que detectar, em uma loja de varejo, quais produtos são sazonais de verão ou de inverno baseado em suas séries de demanda.
+
+Uma excelente maneira de aprender mais sobre clusterização de séries temporais é lendo a [documentação do pacote `dtwclust`](https://cran.r-project.org/web/packages/dtwclust/index.html), que implementa vários algoritmos conhecidos de clusterização.
+
+Neste post, iremos demonstrar como é possível encontrar grupos naturais analisando dados cambiais. Ou seja, a pergunta que se deseja responder é: **Existem padrões naturais na variação cambial de moedas de países da América do Sul em relação ao dólar?**
+
+## Demonstração
+
+### Obtenção dos dados
+
+Para esta análise, serão usados os seguintes pacotes:
+
+```{r}
+library(tidyverse)
+library(quantmod) # baixar cotações
+library(dtwclust) # clusterizacao de series temporais
+```
+
+Abaixo, eu defino manualmente as moedas que serão usadas na análise:
+
+```{r}
+moedas <- c("USD/ARS", "USD/VEF", "USD/BOB",
+            "USD/BRL", "USD/CLP", "USD/COP", 
+            "USD/FKP", "USD/PYG", "USD/GYD",
+            "USD/PEN", "USD/UYU", "USD/SRD")
+
+```
+
+Vamos então, de maneira iterativa para cada uma das moedas do vetor definido acima, obter a série temporal da cotação dos últimos 180 dias e salvar os resultados em uma lista:
+
+```{r obter cotacoes, include=FALSE}
+
+
+list_currencies_data <- moedas %>% 
+  map(getSymbols.oanda,
+      auto.assign = FALSE)
+
+matrix_currencies <- list_currencies_data %>% 
+  reduce(merge) %>% 
+  as.data.frame() %>% 
+  rownames_to_column(var = "data")
+
+#colnames(matrix_currencies)[-1] <- str_replace(moedas, "/", "_")
+
+matrix_currencies %>% 
+  write_csv("data/moedas.csv")
+```
+
+```{r, message = FALSE, warning = FALSE}
+df_moedas <- read_csv("data/moedas.csv")
+```
+
+### Transformação dos dados
+
+```{r}
+# olhando os dados obtidos
+df_moedas %>% head() %>% knitr::kable()
+
+```
+
+
+Veja que os dados possuem escalas distintas: existem moedas em que um dólar vale quase 3000 unidades dela. Para garantir que todas as moedas tenham o mesmo peso no algoritmo de clusterização, precisamos transformar os valores em uma mesma escala normalizada:
+
+```{r}
+# aplicar a funcao de normalizacao excluindo a coluna de data
+moedas_norm <- scale(df_moedas[,-1])
+moedas_norm %>% head() %>% knitr::kable()
+```
+
+Com os dados normalizados, podemos então prosseguir com a análise.
+
+### Aplicação da clusterização
+
+Primeiramente, é possível encontrar clusteres naturais apenas no olho, sem a ajuda de nenhum algoritmo? Para responder a isso, vamos fazer um gráfico no `ggplot2`:
+
+```{r}
+moedas_norm %>% 
+  as.data.frame() %>% 
+  # transformar data frame em formato tidy (long)
+  mutate(ind = row_number()) %>% 
+  gather(moeda, cotacao_norm, -ind) %>% 
+  ggplot(aes(x = ind, y = cotacao_norm)) + 
+    geom_point() +
+    geom_smooth(method = "loess", se = FALSE) +
+    facet_wrap(~ moeda, scale ="free_y")
+
+
+```
+
+A maioria dos algoritmos de clusterização requer que a quantidade de clusteres seja definida pelo usuário. Olhando o gráfico acima, aparentemente, é possível dizer qeue existem três grupos naturais entre essas séries: as que apresentam tendência crescente, decrescente e as demais. Vamos então clusterizar a série em três grupos:
+
+```{r}
+modelo <- tsclust(t(moedas_norm), 
+                  k = 3, 
+                  distance = "dtw_lb",
+                  centroid = "pam", 
+                  seed = 123,
+                  trace = TRUE,
+                  control = partitional_control(pam.precompute = FALSE),
+                  args = tsclust_args(dist = list(window.size = 20L)))
+modelo
+plot(modelo)
+
+```
+
+
+O que você achou do resultado dos clusteres?
+
+### E o Brasil?
+
+Em qual cluster o Real foi alocado?
+
+```{r}
+# descobrir cluster do Real
+(cl_br <- (modelo@cluster[which(colnames(moedas_norm) == "USD.BRL")]))
+#  contar quantos paises ficaram no mesmo cluster do Brasil
+colnames(moedas_norm)[which(modelo@cluster == cl_br)]
+
+
+
+```
+
+Vamos então destacar essas moedas em um gráfico só:
+
+```{r}
+# filtrar paises do mesmo cluster
+cl_br <- as.data.frame(moedas_norm[, which(modelo@cluster == cl_br)])
+
+
+cl_br %>% 
+  mutate(indice = 1:n()) %>% 
+  gather(moeda, cotacao_norm, -indice) %>% 
+  ggplot(aes(x = indice, y = cotacao_norm)) +
+    geom_line() + 
+    geom_smooth(se = FALSE) +
+    facet_wrap( ~ moeda, scales = "free")
+
+```
+
+De fato, o comportamento entre as séries é relativamente parecido.
+
+

@@ -165,62 +165,6 @@ autoplot(teste) +
 
 Dá para observar que o modelo ingênuo sazonal apresenta um desempenho praticamente perfeito no segundo semestre de 2016, compensando o erro alto no primeiro semestre. Será que isso é um padrão? É mais fácil prever o segundo semestre do que o primeiro? Será que, caso o modelo ingênuo sazonal seja sempre melhor no segundo semestre e o de redes neurais no primeiro, é possível construir um modelo de previsão misto (ou um `ensemble model`) que se beneficie dessa informação? Fica o exercício para o leitor.
 
-## Validação cruzada
-
-Uma versão mais sofisticada da metodologia de separar um conjunto de dados em treino e teste é chamado de validação cruzada (cross-validation). Para dados de séries temporais, esse método consiste em começar com um conjunto de treino pequeno (idealmente o número mínimo de observações para se construir um modelo), obter previsões, compará-las com a série de teste e armazenar o erro obtido em uma matriz. Na próxima iteração, a primeira observação da série de treino passa a compor a série de treino, sendo a de teste deslocada em um período.
-
-Visualmente, validação cruzada funciona assim:
-
-[![](http://i.imgur.com/g769CES.png)](https://rpubs.com/crossxwill/time-series-cv)
-
-Um exemplo de implementação da validação cruzada em código é mostrada e comentada abaixo:
-
-```{r crossvalidation, eval=TRUE, cache = TRUE, warning=FALSE}
-
-k <- 36 # tamanho minimo do conjunto de treino
-n <- length(energia) # tamanho do conjunto total de dados
-n_loops <- n - k
-st <- tsp(energia)[1]+(k-2)/12 # definir ponto de stop do loop
-
-matriz_erros <- matrix(NA, n_loops, 2) # construir matriz pra armazenar erros do loop
-
-
-for(i in 1:n_loops) {
-  # definir conjuntos de treino e teste
-  treino <- window(energia, end=st + i/12)
-  teste <- window(energia, start= st + (i+1)/12, end=st + (i+12)/12)
-  
-  # ajustar modelo de RN
-  fit1 <- nnetar(treino)
-  fcast1 <- forecast(fit1, h = length(teste))$mean
-  mape1 <- mean(abs(fcast1 - teste)/teste)
-  
-  # ajustar modelo sazonal ingenuo
-  fit2 <- snaive(treino)
-  fcast2 <- forecast(fit2, h=length(teste))$mean
-  mape2 <- mean(abs(fcast2 - teste)/teste)
-  
-  # armazenar resultados na matriz
-  matriz_erros[i, 1] <- mape1
-  matriz_erros[i, 2] <- mape2
-  
-}
-
-
-# transformar data frame para formato tidy
-df_erros <- matriz_erros %>% 
-  as.data.frame() %>%
-  mutate(loop = 1:nrow(.)) %>% 
-  setNames(c("redes_neurais", "ingenuo_sazonal", "loop")) %>%
-  gather(modelo, valor, 1:2)
-
-ggplot(df_erros, aes(x = loop, y = valor, color = modelo)) + 
-  geom_line()
-
-```
-
-Pelo gráfico acima, não é possível concluir que, analisando o cenário da validação cruzada, existe diferença significativa entre o MAPE dos dois modelos analisados.
-
 ## Referências
 
 * Ótimo post no [blog do Regis](http://regisely.com/blog/bias-variance/) sobre o tradeoff entre viés e variância;  
